@@ -210,10 +210,6 @@ def _binary_test(
     g1 = vals[df[col_name] == g1_label].dropna()
     g2 = vals[df[col_name] == g2_label].dropna()
 
-    n_total = g1.notna().sum() + g2.notna().sum() + vals[
-        ~df[col_name].isin([g1_label, g2_label])
-    ].notna().sum()
-
     if len(g1) < min_n or len(g2) < min_n:
         return None
 

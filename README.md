@@ -269,6 +269,18 @@ Same structure as binary, replacing group columns with:
 
 Unified summary of the top 20 significant metrics per (feature, variant) pair, sorted by absolute effect size. Quick reference for the most informative metrics.
 
+| Column | Description |
+|--------|-------------|
+| `feature` | Clinical feature name (`diagnosis`, `gender`, `age`, `ados_total`) |
+| `variant` | `raw` or `norm` |
+| `metric_col` | Full column name in `merged_dataset.csv` |
+| `base_metric` | Base metric name (e.g. `child_speed_centroid`) |
+| `stat_type` | `mean_of_mean` or `pooled_std` |
+| `effect_size` | Signed effect size (Cohen's d for binary; Spearman ρ for continuous) |
+| `abs_effect_size` | Absolute value of `effect_size` (used for ranking) |
+| `pvalue_fdr` | FDR-corrected p-value (Benjamini-Hochberg) |
+| `significant_fdr` | True if `pvalue_fdr < alpha` |
+
 ### Figures
 
 | Figure | Description |
