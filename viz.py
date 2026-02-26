@@ -4,8 +4,8 @@ Visualization module for pose analysis.
 Generates the following figures:
 
 Outlier diagnostics
-    outliers/outlier_boxplot_{raw|norm}.png    — metric distributions with flagged subjects highlighted
-    outliers/per_subject_outlier_count.png      — bar chart of outlier count per subject
+    outliers/outlier_boxplot_{raw|norm}_{group}.png — metric distributions with flagged subjects highlighted
+    outliers/per_subject_outlier_count_{raw|norm}.png — bar chart of outlier count per subject
 
 Overview summaries (per variant)
     heatmap_{raw|norm}.png                      — effect-size heatmap (all metrics × all features)
@@ -36,6 +36,9 @@ import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy.cluster.hierarchy import linkage, leaves_list
+from scipy.spatial.distance import pdist
+from scipy.stats import linregress
 
 from .load import get_metric_columns, parse_metric_column
 from .stats import BINARY_FEATURES, CONTINUOUS_FEATURES
@@ -282,8 +285,6 @@ def plot_heatmap(
     fdr_df = fdr_df.loc[top_metrics]
 
     # Cluster rows
-    from scipy.cluster.hierarchy import linkage, leaves_list
-    from scipy.spatial.distance import pdist
     try:
         data_for_cluster = eff_df.fillna(0).values
         dist = pdist(data_for_cluster, metric="euclidean")
@@ -624,7 +625,6 @@ def plot_scatter_for_metric(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         try:
-            from scipy.stats import linregress
             slope, intercept, *_ = linregress(sub[feat_col], sub[metric_col])
             xr = np.linspace(sub[feat_col].min(), sub[feat_col].max(), 100)
             ax.plot(xr, slope * xr + intercept, color="#555", linewidth=1.5, linestyle="--")
