@@ -519,11 +519,13 @@ def plot_social_panel(
         try:
             sns.violinplot(
                 data=sub, x="diagnosis", y=col, order=order,
-                palette=palette, ax=ax, inner="box", alpha=0.7,
+                hue="diagnosis", palette=palette, legend=False,
+                ax=ax, inner="box", alpha=0.7,
             )
             sns.stripplot(
                 data=sub, x="diagnosis", y=col, order=order,
-                palette=palette, ax=ax, size=3, alpha=0.5, jitter=True,
+                hue="diagnosis", palette=palette, legend=False,
+                ax=ax, size=3, alpha=0.5, jitter=True,
             )
         except Exception:
             pass
@@ -575,11 +577,13 @@ def plot_violin_for_metric(
     fig, ax = plt.subplots(figsize=(4.5, 4.5))
     sns.violinplot(
         data=sub, x=col_name, y=metric_col, order=[g1, g2],
-        palette=palette, ax=ax, inner="box", alpha=0.75,
+        hue=col_name, palette=palette, legend=False,
+        ax=ax, inner="box", alpha=0.75,
     )
     sns.stripplot(
         data=sub, x=col_name, y=metric_col, order=[g1, g2],
-        palette=palette, ax=ax, size=3.5, alpha=0.55, jitter=True,
+        hue=col_name, palette=palette, legend=False,
+        ax=ax, size=3.5, alpha=0.55, jitter=True,
     )
 
     base = parse_metric_column(metric_col)["base"]
@@ -749,5 +753,59 @@ def generate_all_figures(
                     plot_scatter_for_metric(df, col, feat_name, feat_cfg, rho, pval_fdr, out_path, alpha=alpha)
 
                 n_plots += 1
+
+        # ── Always generate violin plots for social/dyadic metrics ──────────
+        # Social metrics (facingness, congruent_motion, etc.) are primary
+        # clinical hypotheses and should always have individual plots, even
+        # when not FDR-significant.  Generated for binary features only
+        # (diagnosis, gender), mean_of_mean aggregation, both variants.
+        for feat_name in BINARY_FEATURES:
+            if feat_name not in results or variant not in results[feat_name]:
+                continue
+            df_s = results[feat_name][variant]
+            if df_s.empty:
+                continue
+            feat_cfg = BINARY_FEATURES[feat_name]
+            social_rows = df_s[
+                df_s["base_metric"].isin(SOCIAL_METRICS)
+                & (df_s["stat_type"] == "mean_of_mean")
+            ].copy()
+            for _, row in social_rows.iterrows():
+                col = row["metric_col"]
+                base = row["base_metric"]
+                pval_fdr = row["pvalue_fdr"]
+                out_path = fig_dir / "violin" / feat_name / f"{base}_{variant}.png"
+                if not out_path.exists():
+                    plot_violin_for_metric(
+                        df, col, feat_name, feat_cfg, pval_fdr, out_path, alpha=alpha
+                    )
+                    logger.info(f"  Saved social violin: {out_path.name}")
+
+        # ── Always generate scatter plots for social/dyadic metrics ─────────
+        # Same rationale as violin plots above: social metrics are primary
+        # clinical hypotheses and should always have scatter plots vs
+        # continuous features (age, ADOS total), even when not FDR-significant.
+        for feat_name in CONTINUOUS_FEATURES:
+            if feat_name not in results or variant not in results[feat_name]:
+                continue
+            df_s = results[feat_name][variant]
+            if df_s.empty:
+                continue
+            feat_cfg = CONTINUOUS_FEATURES[feat_name]
+            social_rows = df_s[
+                df_s["base_metric"].isin(SOCIAL_METRICS)
+                & (df_s["stat_type"] == "mean_of_mean")
+            ].copy()
+            for _, row in social_rows.iterrows():
+                col = row["metric_col"]
+                base = row["base_metric"]
+                pval_fdr = row["pvalue_fdr"]
+                rho = row.get("spearman_rho", np.nan)
+                out_path = fig_dir / "scatter" / feat_name / f"{base}_{variant}.png"
+                if not out_path.exists():
+                    plot_scatter_for_metric(
+                        df, col, feat_name, feat_cfg, rho, pval_fdr, out_path, alpha=alpha
+                    )
+                    logger.info(f"  Saved social scatter: {out_path.name}")
 
     logger.info(f"Figure generation complete. {n_plots} individual metric plots saved.")
