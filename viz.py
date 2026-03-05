@@ -39,6 +39,7 @@ import seaborn as sns
 from scipy.cluster.hierarchy import linkage, leaves_list
 from scipy.spatial.distance import pdist
 from scipy.stats import linregress
+from scipy import stats as scipy_stats
 
 from .load import get_metric_columns, parse_metric_column
 from .stats import BINARY_FEATURES, CONTINUOUS_FEATURES
@@ -612,7 +613,14 @@ def plot_scatter_for_metric(
 ) -> None:
     """Scatter plot for a continuous feature vs one metric."""
     feat_col = feature_cfg["col"]
-    sub = df[[feat_col, metric_col, "diagnosis"]].dropna(subset=[feat_col, metric_col])
+    sub = df[[feat_col, metric_col, "diagnosis"]].copy()
+    ordinal_map = feature_cfg.get("ordinal_map")
+    if ordinal_map:
+        sub[feat_col] = sub[feat_col].map(ordinal_map)
+    else:
+        sub[feat_col] = pd.to_numeric(sub[feat_col], errors="coerce")
+    sub[metric_col] = pd.to_numeric(sub[metric_col], errors="coerce")
+    sub = sub.dropna(subset=[feat_col, metric_col])
     if sub.empty:
         return
 
@@ -641,6 +649,122 @@ def plot_scatter_for_metric(
         f"{base.replace('_', ' ')}\nvs {feature_cfg.get('label', feature_name)}\n{sig_txt}",
         fontsize=9, fontweight="bold",
     )
+    # For ordinal features: show original labels as x-axis ticks
+    ordinal_map = feature_cfg.get("ordinal_map")
+    if ordinal_map:
+        inv = {v: k for k, v in ordinal_map.items()}
+        ticks = sorted(inv.keys())
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([inv[t] for t in ticks], rotation=25, ha="right", fontsize=7)
+    ax.set_xlabel(feature_cfg.get("label", feature_name))
+    ax.set_ylabel("Value")
+    ax.legend(fontsize=8)
+    plt.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_scatter_by_diagnosis(
+    df: pd.DataFrame,
+    metric_col: str,
+    feature_name: str,
+    feature_cfg: dict,
+    spearman_rho: float,
+    pvalue_fdr: float,
+    output_path: Path,
+    alpha: float = 0.05,
+) -> None:
+    """Scatter with per-diagnosis regression lines and Spearman correlations.
+
+    Shows ASD and TD on the same axes with separate regression lines and
+    per-group Spearman ρ annotations so it is easy to judge whether the
+    overall correlation is driven by diagnosis separation or exists within
+    each diagnostic group independently.
+    """
+    feat_col = feature_cfg["col"]
+    sub = df[[feat_col, metric_col, "diagnosis"]].copy()
+    # Apply ordinal mapping if defined (e.g. text labels → integers)
+    ordinal_map = feature_cfg.get("ordinal_map")
+    if ordinal_map:
+        sub[feat_col] = sub[feat_col].map(ordinal_map)
+    else:
+        sub[feat_col] = pd.to_numeric(sub[feat_col], errors="coerce")
+    sub[metric_col] = pd.to_numeric(sub[metric_col], errors="coerce")
+    sub = sub.dropna(subset=[feat_col, metric_col])
+    if sub.empty:
+        return
+
+    fig, ax = plt.subplots(figsize=(5, 4.5))
+    annot_lines: list[str] = []
+
+    for diag in ["ASD", "TD"]:
+        grp = sub[sub["diagnosis"] == diag]
+        if grp.empty:
+            continue
+        color = PALETTE_DIAGNOSIS.get(diag, "#999")
+        ax.scatter(grp[feat_col], grp[metric_col],
+                   label=diag, color=color, s=30, alpha=0.7)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                slope, intercept, *_ = linregress(
+                    grp[feat_col].astype(float), grp[metric_col].astype(float))
+                xr = np.linspace(grp[feat_col].min(), grp[feat_col].max(), 100)
+                ax.plot(xr, slope * xr + intercept, color=color,
+                        linewidth=1.5, linestyle="--")
+            except Exception:
+                pass
+        # Per-group Spearman — cast to a plain np.float64 array to avoid
+        # scipy dtype issues with object/ordinal columns.
+        try:
+            x_arr = np.array(
+                pd.to_numeric(grp[feat_col], errors="coerce").values,
+                dtype=np.float64,
+            )
+            y_arr = np.array(
+                pd.to_numeric(grp[metric_col], errors="coerce").values,
+                dtype=np.float64,
+            )
+            valid = np.isfinite(x_arr) & np.isfinite(y_arr)
+            if valid.sum() >= 3:
+                rho_g, p_g = scipy_stats.spearmanr(x_arr[valid], y_arr[valid])
+                annot_lines.append(
+                    f"{diag} (n={valid.sum()}): \u03c1={rho_g:.2f} {_stars(p_g)} p={p_g:.3f}"
+                )
+            else:
+                annot_lines.append(f"{diag}: n={valid.sum()} (too few for corr)")
+        except Exception as exc:
+            logger.warning(
+                f"plot_scatter_by_diagnosis: spearmanr failed for {diag} "
+                f"metric={metric_col} feat={feat_col}: {type(exc).__name__}: {exc}"
+            )
+            annot_lines.append(f"{diag}: n={len(grp)} (corr failed: {type(exc).__name__})")
+
+    base = parse_metric_column(metric_col)["base"]
+    n_miss = len(df) - len(sub)
+    overall_txt = (
+        f"Overall \u03c1={spearman_rho:.2f}, FDR={pvalue_fdr:.3f}"
+        f" {_stars(pvalue_fdr)} | missing: {n_miss}"
+    )
+    ax.set_title(
+        f"{base.replace('_', ' ')}\nvs {feature_cfg.get('label', feature_name)}\n"
+        f"{overall_txt}",
+        fontsize=9, fontweight="bold",
+    )
+    ax.annotate(
+        "\n".join(annot_lines),
+        xy=(0.03, 0.97), xycoords="axes fraction",
+        va="top", ha="left", fontsize=8,
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
+    )
+    # For ordinal features: show original labels as x-axis ticks
+    ordinal_map = feature_cfg.get("ordinal_map")
+    if ordinal_map:
+        inv = {v: k for k, v in ordinal_map.items()}
+        ticks = sorted(inv.keys())
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([inv[t] for t in ticks], rotation=25, ha="right", fontsize=7)
     ax.set_xlabel(feature_cfg.get("label", feature_name))
     ax.set_ylabel("Value")
     ax.legend(fontsize=8)
@@ -751,6 +875,10 @@ def generate_all_figures(
                         fig_dir / "scatter" / feat_name / f"{base}_{variant}.png"
                     )
                     plot_scatter_for_metric(df, col, feat_name, feat_cfg, rho, pval_fdr, out_path, alpha=alpha)
+                    out_path_bydx = (
+                        fig_dir / "scatter_bydx" / feat_name / f"{base}_{variant}.png"
+                    )
+                    plot_scatter_by_diagnosis(df, col, feat_name, feat_cfg, rho, pval_fdr, out_path_bydx, alpha=alpha)
 
                 n_plots += 1
 
@@ -807,5 +935,11 @@ def generate_all_figures(
                         df, col, feat_name, feat_cfg, rho, pval_fdr, out_path, alpha=alpha
                     )
                     logger.info(f"  Saved social scatter: {out_path.name}")
+                out_path_bydx = fig_dir / "scatter_bydx" / feat_name / f"{base}_{variant}.png"
+                if not out_path_bydx.exists():
+                    plot_scatter_by_diagnosis(
+                        df, col, feat_name, feat_cfg, rho, pval_fdr, out_path_bydx, alpha=alpha
+                    )
+                    logger.info(f"  Saved social scatter_bydx: {out_path_bydx.name}")
 
     logger.info(f"Figure generation complete. {n_plots} individual metric plots saved.")

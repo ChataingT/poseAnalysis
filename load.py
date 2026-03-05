@@ -27,6 +27,19 @@ CLINICAL_COLS = [
     "uuid", "code", "src", "Ados_2_Age", "Ados_2_Module",
     "ADOS_2_TOTAL", "Visite", "diagnosis_raw", "gender",
     "sujet_id", "diagnosis",
+    "ADOS_G_ADOS_2_TOTAL_score_de_severite",
+    "ADOS_2_ADOS_G_revised_RRB_level_of_symptoms",
+    "ADOS_2_ADOS_G_REVISED_RRB_SEVERITY_SCORE_new",
+    "ADOS_2_ADOS_G_REVISED_SA_LEVEL_OF_SYMPTOMS",
+    "ADOS_2_ADOS_G_REVISED_SA_SEVERITY_SCORE",
+    "ADOS_2_SOCIAL_AFECT_TOTAL",
+    "ADOS_G_REVISED_ADOS_2_TOTAL_Level_of_symptoms",
+    "VLDII_AdSS", "VLDII_MotorSS", "VLDII_gmsVS", "VLDII_fmsVS",
+    "VLDII_SocSS", "VLDII_intVS", "VLDII_plaVS", "VLDII_copVS",
+    "VLDII_DaiSS", "VLDII_perVS", "VLDII_comVS", "VLDII_domVS",
+    "VLDII_ComSS", "VLDII_expVS", "VLDII_recVS",
+    "MSEL_TOTAL_DQ", "MSEL_FM_DQ", "MSEL_VR_DQ", "MSEL_LR_DQ",
+    "MSEL_LE_DQ", "MSEL_NV_DQ", "MSEL_V_DQ", "MSEL_GM_DQ",
 ]
 
 

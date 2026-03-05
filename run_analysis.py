@@ -47,6 +47,7 @@ from .stats import (
     apply_outlier_mask,
     run_all_statistics,
     build_top_metrics_table,
+    compute_total_distance,
     BINARY_FEATURES,
     CONTINUOUS_FEATURES,
 )
@@ -242,6 +243,28 @@ def main(argv=None) -> None:
         display_cols = ["feature", "variant", "base_metric", "stat_type",
                         "effect_size", "pvalue_fdr"]
         logger.info("\n" + top_df[display_cols].to_string(index=False))
+
+    # ── Step 3a: Distance analysis ──────────────────────────
+    logger.info("=" * 60)
+    logger.info("STEP 3a: Distance analysis")
+    logger.info("=" * 60)
+
+    df_dist = compute_total_distance(df_clean)
+    df_dist.to_csv(stats_dir / "distance_ranking.csv", index=False)
+    logger.info(f"Saved distance_ranking.csv  ({len(df_dist)} subjects)")
+
+    # Log top movers per metric
+    log_metrics = [
+        "dist_centroid_raw",        "dist_trunk_raw",
+        "dist_centroid_norm_trunk", "dist_trunk_norm_trunk",
+        "dist_centroid_norm_dur",   "dist_trunk_norm_dur",
+    ]
+    id_display = [c for c in ("code", "uuid", "diagnosis") if c in df_dist.columns]
+    for metric in log_metrics:
+        if metric not in df_dist.columns:
+            continue
+        top = df_dist.nlargest(5, metric)[id_display + [metric]]
+        logger.info(f"\n  Top 5 by {metric}:\n{top.to_string(index=False)}")
 
     # ── Step 4: Figures ───────────────────────────────────────
     if not args.skip_figures:

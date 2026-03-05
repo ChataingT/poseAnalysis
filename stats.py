@@ -64,6 +64,60 @@ BINARY_FEATURES: dict[str, dict] = {
 CONTINUOUS_FEATURES: dict[str, dict] = {
     "age": {"col": "Ados_2_Age", "label": "Age (years)"},
     "ados_total": {"col": "ADOS_2_TOTAL", "label": "ADOS-2 Total Score"},
+    "ados_g_total_severite": {
+        "col": "ADOS_G_ADOS_2_TOTAL_score_de_severite",
+        "label": "ADOS-G Total Severity Score",
+    },
+    "ados_rrb_level": {
+        "col": "ADOS_2_ADOS_G_revised_RRB_level_of_symptoms",
+        "label": "ADOS RRB Level",
+        "ordinal_map": {"Minimal to no evidence": 0, "Low": 1, "Moderate": 2, "High": 3},
+    },
+    "ados_rrb_severity": {
+        "col": "ADOS_2_ADOS_G_REVISED_RRB_SEVERITY_SCORE_new",
+        "label": "ADOS RRB Severity",
+    },
+    "ados_sa_level": {
+        "col": "ADOS_2_ADOS_G_REVISED_SA_LEVEL_OF_SYMPTOMS",
+        "label": "ADOS SA Level",
+        "ordinal_map": {"Minimal to no evidence": 0, "Low": 1, "Moderate": 2, "High": 3},
+    },
+    "ados_sa_severity": {
+        "col": "ADOS_2_ADOS_G_REVISED_SA_SEVERITY_SCORE",
+        "label": "ADOS SA Severity",
+    },
+    "ados_social_affect": {
+        "col": "ADOS_2_SOCIAL_AFECT_TOTAL",
+        "label": "ADOS Social Affect Total",
+    },
+    "ados_g_level": {
+        "col": "ADOS_G_REVISED_ADOS_2_TOTAL_Level_of_symptoms",
+        "label": "ADOS-G Total Level",
+        "ordinal_map": {"Minimal to no evidence": 0, "Low": 1, "Moderate": 2, "High": 3},
+    },
+    "vldii_adss": {"col": "VLDII_AdSS", "label": "VLDII AdSS"},
+    "vldii_motorss": {"col": "VLDII_MotorSS", "label": "VLDII MotorSS"},
+    "vldii_gmsvs": {"col": "VLDII_gmsVS", "label": "VLDII gmsVS"},
+    "vldii_fmsvs": {"col": "VLDII_fmsVS", "label": "VLDII fmsVS"},
+    "vldii_socss": {"col": "VLDII_SocSS", "label": "VLDII SocSS"},
+    "vldii_intvs": {"col": "VLDII_intVS", "label": "VLDII intVS"},
+    "vldii_plavs": {"col": "VLDII_plaVS", "label": "VLDII plaVS"},
+    "vldii_copvs": {"col": "VLDII_copVS", "label": "VLDII copVS"},
+    "vldii_daiss": {"col": "VLDII_DaiSS", "label": "VLDII DaiSS"},
+    "vldii_pervs": {"col": "VLDII_perVS", "label": "VLDII perVS"},
+    "vldii_comvs": {"col": "VLDII_comVS", "label": "VLDII comVS"},
+    "vldii_domvs": {"col": "VLDII_domVS", "label": "VLDII domVS"},
+    "vldii_comss": {"col": "VLDII_ComSS", "label": "VLDII ComSS"},
+    "vldii_expvs": {"col": "VLDII_expVS", "label": "VLDII expVS"},
+    "vldii_recvs": {"col": "VLDII_recVS", "label": "VLDII recVS"},
+    "msel_total_dq": {"col": "MSEL_TOTAL_DQ", "label": "MSEL Total DQ"},
+    "msel_fm_dq": {"col": "MSEL_FM_DQ", "label": "MSEL FM DQ"},
+    "msel_vr_dq": {"col": "MSEL_VR_DQ", "label": "MSEL VR DQ"},
+    "msel_lr_dq": {"col": "MSEL_LR_DQ", "label": "MSEL LR DQ"},
+    "msel_le_dq": {"col": "MSEL_LE_DQ", "label": "MSEL LE DQ"},
+    "msel_nv_dq": {"col": "MSEL_NV_DQ", "label": "MSEL NV DQ"},
+    "msel_v_dq": {"col": "MSEL_V_DQ", "label": "MSEL V DQ"},
+    "msel_gm_dq": {"col": "MSEL_GM_DQ", "label": "MSEL GM DQ"},
 }
 
 
@@ -238,21 +292,38 @@ def _continuous_test(
     feature_cfg: dict,
     min_n: int = 5,
 ) -> dict | None:
-    """Spearman correlation between a metric and a continuous feature.
+    """Spearman and Pearson correlation between a metric and a continuous feature.
 
     Returns None if fewer than min_n paired valid observations.
     """
     feat_col = feature_cfg["col"]
-    paired = df[[feat_col, metric_col]].dropna()
+    paired = df[[feat_col, metric_col]].copy()
+    # Apply ordinal mapping if defined (e.g. text labels → integers)
+    ordinal_map = feature_cfg.get("ordinal_map")
+    if ordinal_map:
+        paired[feat_col] = paired[feat_col].map(ordinal_map)
+    else:
+        # Coerce to numeric — handles object/string columns coming from CSV
+        paired[feat_col] = pd.to_numeric(paired[feat_col], errors="coerce")
+    paired[metric_col] = pd.to_numeric(paired[metric_col], errors="coerce")
+    paired = paired.dropna()
     if len(paired) < min_n:
         return None
 
-    rho, p_val = scipy_stats.spearmanr(paired[feat_col], paired[metric_col])
+    spearman_rho, spearman_p = scipy_stats.spearmanr(
+        paired[feat_col], paired[metric_col]
+    )
+    pearson_rho, pearson_p = scipy_stats.pearsonr(
+        paired[feat_col].astype(float), paired[metric_col].astype(float)
+    )
 
     return {
         "n_total_used": len(paired),
-        "spearman_rho": float(rho),
-        "pvalue": float(p_val),
+        "spearman_rho": float(spearman_rho),
+        "spearman_pvalue": float(spearman_p),
+        "pearson_rho": float(pearson_rho),
+        "pearson_pvalue": float(pearson_p),
+        "pvalue": float(spearman_p),  # Use Spearman for primary significance
     }
 
 
@@ -325,16 +396,13 @@ def run_all_statistics(
 
     Returns:
         Nested dict: results[feature_name][variant] → pd.DataFrame
-        feature_name ∈ {"diagnosis", "gender", "age", "ados_total"}
-        variant      ∈ {"raw", "norm"}
     """
     results: dict[str, dict[str, pd.DataFrame]] = {}
 
     all_features = [
-        ("binary",     "diagnosis",  BINARY_FEATURES["diagnosis"]),
-        ("binary",     "gender",     BINARY_FEATURES["gender"]),
-        ("continuous", "age",        CONTINUOUS_FEATURES["age"]),
-        ("continuous", "ados_total", CONTINUOUS_FEATURES["ados_total"]),
+        ("binary", name, cfg) for name, cfg in BINARY_FEATURES.items()
+    ] + [
+        ("continuous", name, cfg) for name, cfg in CONTINUOUS_FEATURES.items()
     ]
 
     for test_type, feat_name, feat_cfg in all_features:
@@ -346,6 +414,21 @@ def run_all_statistics(
             )
             results[feat_name][variant] = res
 
+    # Subgroup analysis for continuous features by diagnosis
+    for feat_name, feat_cfg in CONTINUOUS_FEATURES.items():
+        for diagnosis_val in df['diagnosis'].unique():
+            if pd.isna(diagnosis_val):
+                continue
+            sub_df = df[df['diagnosis'] == diagnosis_val]
+            sub_feat_name = f"{feat_name}__{diagnosis_val}"
+            results[sub_feat_name] = {}
+            for variant in ("raw", "norm"):
+                logger.info(f"  Running continuous test: {sub_feat_name} × {variant}")
+                res = _run_for_variant(
+                    sub_df, variant, feat_name, feat_cfg, "continuous", alpha, min_n
+                )
+                results[sub_feat_name][variant] = res
+                
     return results
 
 
@@ -403,3 +486,57 @@ def build_top_metrics_table(
         .sort_values(["feature", "variant", "abs_effect_size"], ascending=[True, True, False])
         .reset_index(drop=True)
     )
+
+
+def compute_total_distance(df: pd.DataFrame) -> pd.DataFrame:
+    """Rank subjects by distance traveled using pre-computed metric columns.
+
+    Source columns (already present in merged_dataset.csv):
+
+    Raw total distance (sum of frame-to-frame displacements over the session):
+      child_total_distance_centroid__raw__mean_of_mean
+      child_total_distance_trunk__raw__mean_of_mean
+
+    Normalised by trunk size (unit-free, comparable across subjects):
+      child_total_distance_centroid__norm__mean_of_mean
+      child_total_distance_trunk__norm__mean_of_mean
+
+    Normalised by duration (= mean speed, pixels/frame):
+      child_speed_centroid__raw__mean_of_mean
+      child_speed_trunk__raw__mean_of_mean
+
+    Normalised by duration AND trunk size:
+      child_speed_centroid__norm__mean_of_mean
+      child_speed_trunk__norm__mean_of_mean
+
+    Returns a DataFrame sorted by raw centroid distance (descending) with:
+      - identifier / clinical columns
+      - the 8 distance values
+      - rank_* columns (rank 1 = most movement) for each metric
+    """
+    DIST_COLS: dict[str, str] = {
+        "dist_centroid_raw":            "child_total_distance_centroid__raw__mean_of_mean",
+        "dist_trunk_raw":               "child_total_distance_trunk__raw__mean_of_mean",
+        "dist_centroid_norm_trunk":     "child_total_distance_centroid__norm__mean_of_mean",
+        "dist_trunk_norm_trunk":        "child_total_distance_trunk__norm__mean_of_mean",
+        "dist_centroid_norm_dur":       "child_speed_centroid__raw__mean_of_mean",
+        "dist_trunk_norm_dur":          "child_speed_trunk__raw__mean_of_mean",
+        "dist_centroid_norm_dur_trunk": "child_speed_centroid__norm__mean_of_mean",
+        "dist_trunk_norm_dur_trunk":    "child_speed_trunk__norm__mean_of_mean",
+    }
+
+    id_cols = [c for c in ("uuid", "code", "diagnosis", "gender") if c in df.columns]
+    out = df[id_cols].copy()
+
+    for alias, src_col in DIST_COLS.items():
+        if src_col in df.columns:
+            out[alias] = df[src_col].values
+        else:
+            logger.warning(f"compute_total_distance: column not found → {src_col}")
+            out[alias] = np.nan
+
+    # rank 1 = highest distance
+    for alias in DIST_COLS:
+        out[f"rank_{alias}"] = out[alias].rank(ascending=False, na_option="bottom")
+
+    return out.sort_values("dist_centroid_raw", ascending=False, na_position="last").reset_index(drop=True)
