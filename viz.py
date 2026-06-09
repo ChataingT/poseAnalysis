@@ -420,6 +420,8 @@ def plot_volcano(
     alpha: float = 0.05,
     n_label: int = 10,
 ) -> None:
+    logger.warning("Skipping volcano plot")
+    return 
     """Volcano plot: effect size vs -log10(FDR p-value)."""
     sub = df_stats[df_stats["stat_type"] == stat_type].copy()
     if sub.empty:
@@ -830,16 +832,20 @@ def generate_all_figures(
                 plot_top_metrics(df_s, feat_name, variant, stat_type, top_path, alpha=alpha)
 
                 # ── Volcano ──────────────────────────────────
-                vol_path = fig_dir / f"volcano_{feat_name}_{variant}_{stat_type}.png"
-                plot_volcano(df_s, feat_name, variant, stat_type, vol_path, alpha=alpha)
+                # vol_path = fig_dir / f"volcano_{feat_name}_{variant}_{stat_type}.png"
+                # plot_volcano(df_s, feat_name, variant, stat_type, vol_path, alpha=alpha)
 
             # ── Social metrics panel ─────────────────────────
             social_path = fig_dir / f"social_panel_{variant}_{stat_type}.png"
             plot_social_panel(df, results, variant, stat_type, social_path, alpha=alpha)
 
         # ── Individual metric plots (only for mean_of_mean, FDR < alpha) ──
+        # Skip subgroup keys (e.g. 'age__ASD', 'ados_total__TD') — those are
+        # handled separately and are not in BINARY_FEATURES / CONTINUOUS_FEATURES.
         n_plots = 0
         for feat_name in results:
+            if feat_name not in BINARY_FEATURES and feat_name not in CONTINUOUS_FEATURES:
+                continue
             if variant not in results[feat_name]:
                 continue
             df_s = results[feat_name][variant]
@@ -882,11 +888,9 @@ def generate_all_figures(
 
                 n_plots += 1
 
-        # ── Always generate violin plots for social/dyadic metrics ──────────
-        # Social metrics (facingness, congruent_motion, etc.) are primary
-        # clinical hypotheses and should always have individual plots, even
-        # when not FDR-significant.  Generated for binary features only
-        # (diagnosis, gender), mean_of_mean aggregation, both variants.
+        # ── Always generate violin plots for all metrics ────────────────────
+        # All binary-feature metrics should have violin plots regardless of
+        # FDR significance.  Generated for mean_of_mean aggregation only.
         for feat_name in BINARY_FEATURES:
             if feat_name not in results or variant not in results[feat_name]:
                 continue
@@ -894,11 +898,8 @@ def generate_all_figures(
             if df_s.empty:
                 continue
             feat_cfg = BINARY_FEATURES[feat_name]
-            social_rows = df_s[
-                df_s["base_metric"].isin(SOCIAL_METRICS)
-                & (df_s["stat_type"] == "mean_of_mean")
-            ].copy()
-            for _, row in social_rows.iterrows():
+            all_rows = df_s[df_s["stat_type"] == "mean_of_mean"].copy()
+            for _, row in all_rows.iterrows():
                 col = row["metric_col"]
                 base = row["base_metric"]
                 pval_fdr = row["pvalue_fdr"]
@@ -907,12 +908,11 @@ def generate_all_figures(
                     plot_violin_for_metric(
                         df, col, feat_name, feat_cfg, pval_fdr, out_path, alpha=alpha
                     )
-                    logger.info(f"  Saved social violin: {out_path.name}")
+                    logger.info(f"  Saved violin: {out_path.name}")
 
-        # ── Always generate scatter plots for social/dyadic metrics ─────────
-        # Same rationale as violin plots above: social metrics are primary
-        # clinical hypotheses and should always have scatter plots vs
-        # continuous features (age, ADOS total), even when not FDR-significant.
+        # ── Always generate scatter plots for all continuous features ────────
+        # All continuous-feature metrics should have scatter plots regardless
+        # of FDR significance.
         for feat_name in CONTINUOUS_FEATURES:
             if feat_name not in results or variant not in results[feat_name]:
                 continue
@@ -920,11 +920,8 @@ def generate_all_figures(
             if df_s.empty:
                 continue
             feat_cfg = CONTINUOUS_FEATURES[feat_name]
-            social_rows = df_s[
-                df_s["base_metric"].isin(SOCIAL_METRICS)
-                & (df_s["stat_type"] == "mean_of_mean")
-            ].copy()
-            for _, row in social_rows.iterrows():
+            all_rows = df_s[df_s["stat_type"] == "mean_of_mean"].copy()
+            for _, row in all_rows.iterrows():
                 col = row["metric_col"]
                 base = row["base_metric"]
                 pval_fdr = row["pvalue_fdr"]
@@ -934,12 +931,12 @@ def generate_all_figures(
                     plot_scatter_for_metric(
                         df, col, feat_name, feat_cfg, rho, pval_fdr, out_path, alpha=alpha
                     )
-                    logger.info(f"  Saved social scatter: {out_path.name}")
+                    logger.info(f"  Saved scatter: {out_path.name}")
                 out_path_bydx = fig_dir / "scatter_bydx" / feat_name / f"{base}_{variant}.png"
                 if not out_path_bydx.exists():
                     plot_scatter_by_diagnosis(
                         df, col, feat_name, feat_cfg, rho, pval_fdr, out_path_bydx, alpha=alpha
                     )
-                    logger.info(f"  Saved social scatter_bydx: {out_path_bydx.name}")
+                    logger.info(f"  Saved scatter_bydx: {out_path_bydx.name}")
 
     logger.info(f"Figure generation complete. {n_plots} individual metric plots saved.")
